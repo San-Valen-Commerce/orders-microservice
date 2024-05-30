@@ -4,6 +4,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 @Injectable()
 export class OrdersService {
   create(createOrderDto: CreateOrderDto) {
+    console.log('createOrderDto', createOrderDto);
     return 'This action adds a new order';
   }
 
