@@ -17,7 +17,7 @@ $ cd ..
 
 ```bash
 $ docker-compose up -d // firts cd db, execute this command to start postgres and the cd ..
-$ pnpm drizzle-kit studio // start drizzle studio
+$ pnpm drizzle-kit studio --port 6000 // start drizzle studio
 $ pnpm run start:dev // start the server
 ```
 drizzle studio: https://local.drizzle.studio/
