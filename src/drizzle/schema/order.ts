@@ -19,7 +19,7 @@ const statusEnum = pgEnum('status', [
   STATUS_ENUM.CANCELLED,
 ]);
 
-export const order = pgTable('order', {
+export const order = pgTable('ORDER', {
   id: serial('id').primaryKey(),
   totalAmount: integer('total_amount').notNull(),
   totalItems: integer('total_items').notNull(),
