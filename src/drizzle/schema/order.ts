@@ -25,9 +25,9 @@ export const order = pgTable('order', {
   totalItems: integer('total_items').notNull(),
   status: statusEnum('status').notNull().default(STATUS_ENUM.PENDING),
   paid: boolean('paid').default(false),
-  paidAt: timestamp('paid_at'),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at')
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
     .defaultNow()
     .$onUpdateFn(() => {
       return new Date();
