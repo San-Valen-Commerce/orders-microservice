@@ -1,28 +1,101 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { DrizzleService } from 'src/drizzle/drizzle.service';
 import { IMetadata } from 'src/common';
 import { count, eq } from 'drizzle-orm';
-import { Orderentity } from './entities/order.entity';
-import { RpcException } from '@nestjs/microservices';
+import { OrderEntity } from './entities/order.entity';
+import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { ChangeOrderStatusDto, OrderPaginationDto } from './dto';
 import { Status } from 'src/drizzle/schema/order';
+import { PRODUCTS_SERVICE } from 'src/config';
+import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class OrdersService {
-  constructor(private drizzle: DrizzleService) {}
+  constructor(
+    @Inject(PRODUCTS_SERVICE) private readonly productsClient: ClientProxy,
+    private drizzle: DrizzleService,
+  ) {}
 
   async create(createOrderDto: CreateOrderDto) {
-    const result = await this.drizzle.db
-      .insert(this.drizzle.schema.order)
-      .values(createOrderDto)
-      .returning();
+    const validateProducts = createOrderDto.items.map((item) => ({
+      id: item.productId,
+      quantity: item.quantity,
+    }));
 
-    if (result.length) {
-      return result[0];
+    const products =
+      await this.validateProductsExistenceAndStock(validateProducts);
+
+    try {
+      const { totalAmount, totalItems } = createOrderDto.items.reduce(
+        (acc, orderItem) => {
+          const product = products.find(
+            (product) => product.id === orderItem.productId,
+          );
+
+          if (product) {
+            const amount = acc.totalAmount + product.price * orderItem.quantity;
+            const items = acc.totalItems + orderItem.quantity;
+            return { totalAmount: amount, totalItems: items };
+          }
+
+          return acc;
+        },
+        { totalAmount: 0, totalItems: 0 },
+      );
+
+      // Crear order y asociar orderItems en una transacción
+      const orderWithItems = await this.drizzle.db.transaction(async (tx) => {
+        const order = (
+          await tx
+            .insert(this.drizzle.schema.order)
+            .values({
+              totalAmount,
+              totalItems,
+            })
+            .returning()
+        )[0];
+
+        const ordersToInsert = createOrderDto.items
+          .filter((orderItem) =>
+            products.some((product) => product.id === orderItem.productId),
+          )
+          .map((orderItem) => {
+            const product = products.find(
+              (product) => product.id === orderItem.productId,
+            );
+
+            return {
+              productId: product.id as number,
+              quantity: orderItem.quantity,
+              price: product.price as number,
+              orderId: order.id,
+            };
+          });
+
+        const orderItems = await tx
+          .insert(this.drizzle.schema.orderItem)
+          .values(ordersToInsert)
+          .returning();
+
+        return {
+          ...order,
+          orderItems: orderItems.map((orderItem) => ({
+            ...orderItem,
+            productName: products.find(
+              (product) => product.id === orderItem.productId,
+            ).title,
+          })),
+        };
+      });
+
+      return orderWithItems;
+    } catch (error: any) {
+      throw new RpcException({
+        message: error.message,
+        status: HttpStatus.BAD_REQUEST,
+      });
     }
-
-    return result;
   }
 
   async findAll(orderPaginationDto: OrderPaginationDto) {
@@ -36,7 +109,7 @@ export class OrdersService {
       lastPage,
     };
 
-    const data: Orderentity[] = await this.drizzle.db
+    const data: OrderEntity[] = await this.drizzle.db
       .select()
       .from(this.drizzle.schema.order)
       .where(status ? eq(this.drizzle.schema.order.status, status) : undefined)
@@ -62,7 +135,29 @@ export class OrdersService {
       });
     }
 
-    return result[0];
+    const order = result[0];
+
+    const orderItems = await this.drizzle.db
+      .select()
+      .from(this.drizzle.schema.orderItem)
+      .where(eq(this.drizzle.schema.orderItem.orderId, id));
+
+    const validateProducts = orderItems.map((orderItem) => ({
+      id: orderItem.productId,
+      quantity: orderItem.quantity,
+    }));
+
+    const products = await this.validateProductsExistence(validateProducts);
+
+    return {
+      ...order,
+      orderItems: orderItems.map((orderItem) => ({
+        ...orderItem,
+        productName: products.find(
+          (product) => product.id === orderItem.productId,
+        ).title as string,
+      })),
+    };
   }
 
   async updateStatus(changeOrderStatusDto: ChangeOrderStatusDto) {
@@ -102,5 +197,45 @@ export class OrdersService {
           status ? eq(this.drizzle.schema.order.status, status) : undefined,
         )
     )[0].count;
+  }
+
+  async validateProductsExistence(
+    validateProducts: { id: number; quantity: number }[],
+  ) {
+    try {
+      const products: any[] = await firstValueFrom(
+        this.productsClient.send(
+          { cmd: 'validate_products_existence' },
+          validateProducts,
+        ),
+      );
+
+      return products;
+    } catch (error: any) {
+      throw new RpcException({
+        message: error.message,
+        status: HttpStatus.BAD_REQUEST,
+      });
+    }
+  }
+
+  async validateProductsExistenceAndStock(
+    validateProducts: { id: number; quantity: number }[],
+  ) {
+    try {
+      const products: any[] = await firstValueFrom(
+        this.productsClient.send(
+          { cmd: 'validate_products_existence_and_stock' },
+          validateProducts,
+        ),
+      );
+
+      return products;
+    } catch (error: any) {
+      throw new RpcException({
+        message: error.message,
+        status: HttpStatus.BAD_REQUEST,
+      });
+    }
   }
 }

@@ -1,30 +1,11 @@
-import {
-  IsBoolean,
-  IsIn,
-  IsInt,
-  IsOptional,
-  IsPositive,
-} from 'class-validator';
-import { IOrder } from '../entities/order.entity';
-import { STATUS_LIST, Status } from 'src/drizzle/schema';
+import { Type } from 'class-transformer';
+import { ArrayMinSize, IsArray, ValidateNested } from 'class-validator';
+import { OrderItemDto } from './order-item.dto';
 
-interface ICreateOrder
-  extends Omit<IOrder, 'id' | 'paidAt' | 'createdAt' | 'updatedAt'> {}
-
-export class CreateOrderDto implements ICreateOrder {
-  @IsInt()
-  @IsPositive()
-  totalAmount!: number;
-
-  @IsInt()
-  @IsPositive()
-  totalItems!: number;
-
-  @IsIn(STATUS_LIST)
-  @IsOptional()
-  status!: Status;
-
-  @IsBoolean()
-  @IsOptional()
-  paid!: boolean | null;
+export class CreateOrderDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items!: OrderItemDto[];
 }

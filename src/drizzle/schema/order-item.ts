@@ -6,10 +6,12 @@ export const orderItem = pgTable('ORDER_ITEM', {
   productId: integer('product_id').notNull(),
   quantity: integer('quantity').notNull(),
   price: integer('price').notNull(),
-  orderId: integer('order_id').references(() => order.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
+  orderId: integer('order_id')
+    .notNull()
+    .references(() => order.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
 });
 
 export type OrderItem = typeof orderItem.$inferSelect;

@@ -1,14 +1,14 @@
 import { Order, Status } from 'src/drizzle/schema';
 
-export class Orderentity implements Order {
+export class OrderEntity implements Order {
   id!: number;
   totalAmount!: number;
   totalItems!: number;
   status!: Status;
-  paid!: boolean | null;
+  paid!: boolean;
   paidAt!: Date | null;
-  createdAt!: Date | null;
-  updatedAt!: Date | null;
+  createdAt!: Date;
+  updatedAt!: Date;
 }
 
-export interface IOrder extends Orderentity {}
+export interface IOrder extends OrderEntity {}

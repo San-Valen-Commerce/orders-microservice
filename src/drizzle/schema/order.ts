@@ -24,10 +24,13 @@ export const order = pgTable('ORDER', {
   totalAmount: integer('total_amount').notNull(),
   totalItems: integer('total_items').notNull(),
   status: statusEnum('status').notNull().default(STATUS_ENUM.PENDING),
-  paid: boolean('paid').default(false),
+  paid: boolean('paid').notNull().default(false),
   paidAt: timestamp('paid_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
     .defaultNow()
     .$onUpdateFn(() => {
       return new Date();
