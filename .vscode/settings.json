@@ -1,6 +1,5 @@
 {
   "material-icon-theme.activeIconPack": "nest",
-  "editor.fontFamily": "'Fira Code Regular'",
   "workbench.colorTheme": "Bluloco Dark Italic",
   "workbench.colorCustomizations": {
     "activityBar.activeBackground": "#fbed80",
