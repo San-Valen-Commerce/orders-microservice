@@ -5,16 +5,19 @@ import {
   pgEnum,
   pgTable,
   serial,
+  text,
 } from 'drizzle-orm/pg-core';
 
 export enum STATUS_ENUM {
   PENDING = 'pending',
+  PAID = 'paid',
   DELIVERED = 'delivered',
   CANCELLED = 'cancelled',
 }
 
-const statusEnum = pgEnum('status', [
+export const statusEnum = pgEnum('status', [
   STATUS_ENUM.PENDING,
+  STATUS_ENUM.PAID,
   STATUS_ENUM.DELIVERED,
   STATUS_ENUM.CANCELLED,
 ]);
@@ -26,6 +29,7 @@ export const order = pgTable('ORDER', {
   status: statusEnum('status').notNull().default(STATUS_ENUM.PENDING),
   paid: boolean('paid').notNull().default(false),
   paidAt: timestamp('paid_at', { withTimezone: true }),
+  stripeChargeId: text('stripe_charge_id'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

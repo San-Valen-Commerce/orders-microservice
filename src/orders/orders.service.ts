@@ -1,19 +1,27 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { CreateOrderDto } from './dto/create-order.dto';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { DrizzleService } from 'src/drizzle/drizzle.service';
 import { IMetadata } from 'src/common';
 import { count, eq } from 'drizzle-orm';
 import { OrderEntity } from './entities/order.entity';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
-import { ChangeOrderStatusDto, OrderPaginationDto } from './dto';
-import { Status } from 'src/drizzle/schema/order';
+import {
+  ChangeOrderStatusDto,
+  OrderPaginationDto,
+  PaidOrderDto,
+  UpdateOrderDto,
+  CreateOrderDto,
+} from './dto';
+import { Status, STATUS_ENUM } from 'src/drizzle/schema/order';
 import { NATS_SERVICE } from 'src/config';
 import { firstValueFrom } from 'rxjs';
+import { OrderWithProducts } from './interfaces/order-with-products.interface';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger('OrdersService');
+
   constructor(
-    @Inject(NATS_SERVICE) private readonly productsClient: ClientProxy,
+    @Inject(NATS_SERVICE) private readonly client: ClientProxy,
     private drizzle: DrizzleService,
   ) {}
 
@@ -160,6 +168,23 @@ export class OrdersService {
     };
   }
 
+  async updateOneOrder(id: number, updateOrderDto: UpdateOrderDto) {
+    const result = await this.drizzle.db
+      .update(this.drizzle.schema.order)
+      .set(updateOrderDto)
+      .where(eq(this.drizzle.schema.order.id, id))
+      .returning();
+
+    if (result.length === 0) {
+      throw new RpcException({
+        message: `Order #${id} not found`,
+        status: HttpStatus.BAD_REQUEST,
+      });
+    }
+
+    return result[0];
+  }
+
   async updateStatus(changeOrderStatusDto: ChangeOrderStatusDto) {
     const { id, status } = changeOrderStatusDto;
 
@@ -204,7 +229,7 @@ export class OrdersService {
   ) {
     try {
       const products: any[] = await firstValueFrom(
-        this.productsClient.send(
+        this.client.send(
           { cmd: 'validate_products_existence' },
           validateProducts,
         ),
@@ -224,13 +249,55 @@ export class OrdersService {
   ) {
     try {
       const products: any[] = await firstValueFrom(
-        this.productsClient.send(
+        this.client.send(
           { cmd: 'validate_products_existence_and_stock' },
           validateProducts,
         ),
       );
 
       return products;
+    } catch (error: any) {
+      throw new RpcException({
+        message: error.message,
+        status: HttpStatus.BAD_REQUEST,
+      });
+    }
+  }
+
+  async createPaymentSession(order: OrderWithProducts) {
+    const paymentSession = await firstValueFrom(
+      this.client.send('create.payment.session', {
+        orderId: order.id,
+        currency: 'usd',
+        items: order.orderItems.map((orderItem) => ({
+          name: orderItem.productName,
+          price: orderItem.price,
+          quantity: orderItem.quantity,
+        })),
+      }),
+    );
+
+    return paymentSession;
+  }
+
+  async markOrderAsPaid(paidOrderDto: PaidOrderDto) {
+    this.logger.log('Marking order as paid...');
+    this.logger.log(paidOrderDto);
+
+    try {
+      await this.drizzle.db.transaction(async (tx) => {
+        await tx.insert(this.drizzle.schema.orderReceipt).values({
+          orderId: paidOrderDto.orderId,
+          receiptUrl: paidOrderDto.receiptUrl,
+        });
+
+        await this.updateOneOrder(paidOrderDto.orderId, {
+          stripeChargeId: paidOrderDto.stripePaymentId,
+          status: STATUS_ENUM.PAID,
+          paid: true,
+          paidAt: new Date(),
+        });
+      });
     } catch (error: any) {
       throw new RpcException({
         message: error.message,
