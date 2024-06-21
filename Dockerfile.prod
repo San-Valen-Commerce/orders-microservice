@@ -1,0 +1,55 @@
+# Dependencias
+FROM node:hydrogen-alpine as deps
+
+
+WORKDIR /usr/src/app
+
+COPY package.json ./
+COPY pnpm-lock.yaml ./
+
+RUN npm install -g pnpm && pnpm install
+
+
+
+
+# Builder - construye la aplicación
+FROM node:hydrogen-alpine as build
+
+ARG DATABASE_URL
+ARG NATS_SERVERS
+
+ENV DATABASE_URL=${DATABASE_URL}
+ENV NATS_SERVERS=${NATS_SERVERS}
+
+WORKDIR /usr/src/app
+
+# Copiar de deps, los modulos de node
+COPY --from=deps /usr/src/app/node_modules ./node_modules
+
+# Copiar el resto de los archivos
+COPY . .
+
+# Construir la aplicación
+RUN npm install -g pnpm && pnpm build
+RUN pnpm drizzle-kit generate
+RUN pnpm prune --prod
+RUN pnpm tsx db/scripts/migrate.ts
+
+
+
+
+# Crear la imagen final
+FROM node:hydrogen-alpine as prod
+
+WORKDIR /usr/src/app
+
+COPY --from=build /usr/src/app/node_modules ./node_modules
+
+# copiar la carpeta de distribucion
+COPY --from=build /usr/src/app/dist ./dist
+
+ENV NODE_ENV=production
+
+USER node
+
+CMD ["node", "dist/src/main.js"]
