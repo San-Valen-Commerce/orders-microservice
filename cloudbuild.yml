@@ -1,0 +1,25 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  entrypoint: 'bash'
+  args:
+    - -c
+    - |
+      docker build -t southamerica-east1-docker.pkg.dev/san-valen-commerce/san-valen-registry/orders-ms -f dockerfile.prod --platform=linux/amd64 --build-arg DATABASE_URL=$$DATABASE_URL --build-arg NATS_SERVERS=$$NATS_SERVERS .
+  secretEnv: ['DATABASE_URL', 'NATS_SERVERS']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args:
+    [
+      'push',
+      'southamerica-east1-docker.pkg.dev/san-valen-commerce/san-valen-registry/orders-ms',
+    ]
+
+availableSecrets:
+  secretManager:
+  - versionName: projects/294153741544/secrets/ORDERS_DATABASE_URL/versions/1
+    env: 'DATABASE_URL'
+  - versionName: projects/294153741544/secrets/NATS_SERVERS/versions/1
+    env: 'NATS_SERVERS'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
